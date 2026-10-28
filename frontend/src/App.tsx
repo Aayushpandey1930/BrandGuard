@@ -183,7 +183,6 @@ export default function App() {
 
         {appState === "results" && (
           <ResultsView
-            draft={draft}
             findings={findings}
             summary={summary}
             openCount={openCount}
@@ -342,9 +341,7 @@ function ResultsView({
   onUpdateFinding,
   onProceedToDecision,
   onStartOver,
-  draft,
 }: {
-  draft: string;
   findings: Finding[];
   summary: string;
   openCount: number;
@@ -384,7 +381,6 @@ function ResultsView({
       <div className="two-col">
         <FindingsPanel
           findings={findings}
-          draft={draft}
           onUpdateFinding={onUpdateFinding}
         />
         <div className="flex flex-col gap-4">

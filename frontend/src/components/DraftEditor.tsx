@@ -1,5 +1,3 @@
-import type { Finding } from "../types";
-
 export default function DraftEditor({ draft, isSample, sampleDraftLabel, onDraftChange, onCheck, isChecking }: {
   draft: string;
   isSample: boolean;

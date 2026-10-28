@@ -219,9 +219,8 @@ function FindingCard({ finding, onUpdate }: {
   );
 }
 
-export default function FindingsPanel({ findings, draft, onUpdateFinding }: {
+export default function FindingsPanel({ findings, onUpdateFinding }: {
   findings: Finding[];
-  draft: string;
   onUpdateFinding: (id: string, status: FindingStatus, text?: string) => void;
 }) {
   const open = findings.filter((f) => f.status === "open");
