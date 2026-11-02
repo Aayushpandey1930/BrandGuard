@@ -1,10 +1,48 @@
 /**
- * Deterministic rule-based checks against the Northstar Coffee brand profile.
+ * Deterministic rule-based checks against a brand profile.
  * Runs entirely in the browser — no API key required.
+ * Accepts a dynamic profile so custom uploads work out of the box.
  */
 
 import type { Finding } from "./types";
 import { BRAND_PROFILE } from "./brandRules";
+
+// ------------------------------------------------------------------
+// Extended profile shape (superset of what brandRules.ts exports)
+// ------------------------------------------------------------------
+
+export interface DynamicBrandProfile {
+  organisation: string;
+  tagline?: string;
+  disclaimer?: string;
+  voice?: {
+    description?: string;
+    guidelines?: readonly string[];
+  };
+  preferred_terms: ReadonlyArray<{
+    use: string;
+    avoid: readonly string[];
+    context?: string;
+    rationale?: string;
+  }>;
+  approved_facts: ReadonlyArray<{
+    id: string;
+    statement: string;
+    approved_number?: number;
+    keywords?: readonly string[];
+    required_phrase?: string;
+  }>;
+  restricted_claims: ReadonlyArray<{
+    id: string;
+    patterns?: readonly string[];
+    rule: string;
+    severity?: string;
+  }>;
+  accessibility?: {
+    rule?: string;
+    keywords?: readonly string[];
+  };
+}
 
 let idCounter = 0;
 function makeId() {
@@ -22,9 +60,9 @@ function findExcerpt(text: string, phrase: string): string {
   return excerpt;
 }
 
-function checkPreferredTerms(draft: string): Finding[] {
+function checkPreferredTerms(draft: string, profile: DynamicBrandProfile): Finding[] {
   const findings: Finding[] = [];
-  for (const termRule of BRAND_PROFILE.preferred_terms) {
+  for (const termRule of profile.preferred_terms) {
     for (const avoid of termRule.avoid) {
       const re = new RegExp(`\\b${avoid}\\b`, "gi");
       if (re.test(draft)) {
@@ -33,8 +71,8 @@ function checkPreferredTerms(draft: string): Finding[] {
           title: `Preferred term: use "${termRule.use}"`,
           category: "Terminology",
           triggered_text: findExcerpt(draft, avoid),
-          explanation: `The word "${avoid}" appears in this draft. Northstar Coffee uses "${termRule.use}" in all ${termRule.context} to keep language consistent.`,
-          related_rule: `Use "${termRule.use}" — avoid "${termRule.avoid.join('", "')}" in ${termRule.context}. ${termRule.rationale}`,
+          explanation: `The word "${avoid}" appears in this draft. ${profile.organisation} uses "${termRule.use}" in all ${termRule.context ?? "copy"} to keep language consistent.`,
+          related_rule: `Use "${termRule.use}" — avoid "${termRule.avoid.join('", "')}" in ${termRule.context ?? "copy"}. ${termRule.rationale ?? ""}`,
           severity: "review",
           source: "rule",
           suggestion: `Replace "${avoid}" with "${termRule.use}".`,
@@ -46,80 +84,84 @@ function checkPreferredTerms(draft: string): Finding[] {
   return findings;
 }
 
-function checkApprovedFacts(draft: string): Finding[] {
+function checkApprovedFacts(draft: string, profile: DynamicBrandProfile): Finding[] {
   const findings: Finding[] = [];
   const lower = draft.toLowerCase();
 
-  // Fact: locations count
-  const locFact = BRAND_PROFILE.approved_facts.find((f) => f.id === "fact_locations")!;
-  const locRe = /\b(\d+)\s+(?:location|locations|store|stores|branch|branches|outlet|outlets)\b/gi;
-  let m: RegExpExecArray | null;
-  while ((m = locRe.exec(draft)) !== null) {
-    const found = parseInt(m[1], 10);
-    if (found !== (locFact as { approved_number: number }).approved_number) {
-      findings.push({
-        id: makeId(),
-        title: "Incorrect location count",
-        category: "Fact accuracy",
-        triggered_text: findExcerpt(draft, m[0]),
-        explanation: `The draft says "${m[0]}" but the approved fact is "${locFact.statement}". Using the wrong number risks misleading customers.`,
-        related_rule: locFact.statement,
-        severity: "needs_attention",
-        source: "rule",
-        suggestion: `Change "${m[0]}" to "12 locations" to match the approved fact.`,
-        status: "open",
-      });
-      break;
-    }
-  }
-
-  // Fact: seasonal blend availability
-  const seasonalFact = BRAND_PROFILE.approved_facts.find((f) => f.id === "fact_seasonal_blend")!;
-  const seasonalKws = (seasonalFact as { keywords: readonly string[] }).keywords;
-  for (const kw of seasonalKws) {
-    const kwRe = new RegExp(`\\b${kw}\\b`, "i");
-    if (kwRe.test(draft)) {
-      const required = (seasonalFact as { required_phrase: string }).required_phrase;
-      if (!lower.includes(required.toLowerCase())) {
-        findings.push({
-          id: makeId(),
-          title: "Missing availability qualifier",
-          category: "Fact accuracy",
-          triggered_text: findExcerpt(draft, kw),
-          explanation: `The draft mentions the seasonal blend but does not include the required phrase "${required}". Without this qualifier, customers may expect availability that cannot be guaranteed.`,
-          related_rule: seasonalFact.statement,
-          severity: "review",
-          source: "rule",
-          suggestion: `Add "while supplies last" after the mention of the seasonal blend. Example: "Try our seasonal blend today, available while supplies last."`,
-          confidence_note: "Needs human review — context may already imply limited availability.",
-          status: "open",
-        });
+  for (const fact of profile.approved_facts) {
+    // Number check
+    if (fact.approved_number !== undefined && fact.keywords && fact.keywords.length > 0) {
+      const kwPattern = fact.keywords.map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+      const re = new RegExp(`\\b(\\d+)\\s+(?:${kwPattern})\\b`, "gi");
+      let m: RegExpExecArray | null;
+      let flagged = false;
+      while ((m = re.exec(draft)) !== null && !flagged) {
+        const found = parseInt(m[1], 10);
+        if (found !== fact.approved_number) {
+          findings.push({
+            id: makeId(),
+            title: `Incorrect count — ${fact.id}`,
+            category: "Fact accuracy",
+            triggered_text: findExcerpt(draft, m[0]),
+            explanation: `The draft says "${m[0]}" but the approved fact is "${fact.statement}". Using the wrong number risks misleading readers.`,
+            related_rule: fact.statement,
+            severity: "needs_attention",
+            source: "rule",
+            suggestion: `Change "${m[0]}" to match the approved fact: "${fact.statement}".`,
+            status: "open",
+          });
+          flagged = true;
+        }
       }
-      break;
+    }
+
+    // Required phrase check
+    if (fact.required_phrase && fact.keywords && fact.keywords.length > 0) {
+      for (const kw of fact.keywords) {
+        const kwRe = new RegExp(`\\b${kw}\\b`, "i");
+        if (kwRe.test(draft)) {
+          const required = fact.required_phrase;
+          if (!lower.includes(required.toLowerCase())) {
+            findings.push({
+              id: makeId(),
+              title: "Missing required qualifier",
+              category: "Fact accuracy",
+              triggered_text: findExcerpt(draft, kw),
+              explanation: `The draft mentions "${kw}" but does not include the required phrase "${required}".`,
+              related_rule: fact.statement,
+              severity: "review",
+              source: "rule",
+              suggestion: `Add "${required}" after the relevant mention.`,
+              confidence_note: "Needs human review — context may already imply this.",
+              status: "open",
+            });
+          }
+          break;
+        }
+      }
     }
   }
 
   return findings;
 }
 
-function checkRestrictedClaims(draft: string): Finding[] {
+function checkRestrictedClaims(draft: string, profile: DynamicBrandProfile): Finding[] {
   const findings: Finding[] = [];
   const lower = draft.toLowerCase();
 
-  for (const claimRule of BRAND_PROFILE.restricted_claims) {
-    for (const pattern of claimRule.patterns) {
+  for (const claimRule of profile.restricted_claims) {
+    for (const pattern of claimRule.patterns ?? []) {
       if (lower.includes(pattern.toLowerCase())) {
         findings.push({
           id: makeId(),
           title: "Unsupported claim",
           category: "Claims & compliance",
           triggered_text: findExcerpt(draft, pattern),
-          explanation: `The phrase "${pattern}" is a promotional claim that requires documented evidence before it can be published. Using it without approval creates compliance risk.`,
+          explanation: `The phrase "${pattern}" is a promotional claim that requires documented evidence before it can be published.`,
           related_rule: claimRule.rule,
-          severity: claimRule.severity,
+          severity: (claimRule.severity as "review" | "needs_attention") ?? "needs_attention",
           source: "rule",
-          suggestion:
-            "Remove or replace with a specific, verifiable statement. For example, describe a particular award, a customer milestone, or a concrete number.",
+          suggestion: "Remove or replace with a specific, verifiable statement.",
           status: "open",
         });
         break;
@@ -129,11 +171,14 @@ function checkRestrictedClaims(draft: string): Finding[] {
   return findings;
 }
 
-export function runAllChecks(draft: string): Finding[] {
+export function runAllChecks(
+  draft: string,
+  profile: DynamicBrandProfile = BRAND_PROFILE as unknown as DynamicBrandProfile
+): Finding[] {
   idCounter = 0;
   return [
-    ...checkPreferredTerms(draft),
-    ...checkApprovedFacts(draft),
-    ...checkRestrictedClaims(draft),
+    ...checkPreferredTerms(draft, profile),
+    ...checkApprovedFacts(draft, profile),
+    ...checkRestrictedClaims(draft, profile),
   ];
 }

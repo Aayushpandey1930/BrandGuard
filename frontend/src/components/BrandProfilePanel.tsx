@@ -26,21 +26,32 @@ export default function BrandProfilePanel({
         </span>
       </div>
 
-      <p className="text-xs text-muted mb-3" style={{ fontStyle: "italic" }}>
-        {profile.disclaimer}
-      </p>
+      {profile.disclaimer && (
+        <p className="text-xs text-muted mb-3" style={{ fontStyle: "italic" }}>
+          {profile.disclaimer}
+        </p>
+      )}
 
-      <section className="mb-3">
-        <h3
-          className="text-sm mb-1"
-          style={{ color: "var(--color-text-secondary)" }}
-        >
-          Voice
-        </h3>
-        <p className="text-sm">{profile.voice.description}</p>
-      </section>
+      {profile.voice?.description && (
+        <section className="mb-3">
+          <h3
+            className="text-sm mb-1"
+            style={{ color: "var(--color-text-secondary)" }}
+          >
+            Voice
+          </h3>
+          <p className="text-sm">{profile.voice.description}</p>
+          {!compact && profile.voice.guidelines && profile.voice.guidelines.length > 0 && (
+            <ul style={{ paddingLeft: "1rem", marginTop: "0.5rem", display: "flex", flexDirection: "column", gap: "0.2rem" }}>
+              {profile.voice.guidelines.map((g, i) => (
+                <li key={i} className="text-xs text-secondary">{g}</li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
 
-      <hr className="divider" style={{ margin: "0.75rem 0" }} />
+      {profile.voice?.description && <hr className="divider" style={{ margin: "0.75rem 0" }} />}
 
       <section className="mb-3">
         <h3
@@ -49,12 +60,16 @@ export default function BrandProfilePanel({
         >
           Terminology
         </h3>
-        {profile.preferred_terms.map((t, i) => (
-          <p key={i} className="text-sm">
-            Use <strong>"{t.use}"</strong> — avoid "
-            {[...t.avoid].join('", "')}" in {t.context}.
-          </p>
-        ))}
+        {profile.preferred_terms.length === 0 ? (
+          <p className="text-xs text-muted">No preferred terms defined.</p>
+        ) : (
+          profile.preferred_terms.map((t, i) => (
+            <p key={i} className="text-sm">
+              Use <strong>"{t.use}"</strong> — avoid "
+              {[...t.avoid].join('", "')}" in {t.context ?? "copy"}.
+            </p>
+          ))
+        )}
       </section>
 
       <hr className="divider" style={{ margin: "0.75rem 0" }} />
@@ -66,20 +81,24 @@ export default function BrandProfilePanel({
         >
           Approved facts
         </h3>
-        <ul
-          style={{
-            paddingLeft: "1rem",
-            display: "flex",
-            flexDirection: "column",
-            gap: "0.25rem",
-          }}
-        >
-          {profile.approved_facts.map((f) => (
-            <li key={f.id} className="text-sm">
-              {f.statement}
-            </li>
-          ))}
-        </ul>
+        {profile.approved_facts.length === 0 ? (
+          <p className="text-xs text-muted">No approved facts defined.</p>
+        ) : (
+          <ul
+            style={{
+              paddingLeft: "1rem",
+              display: "flex",
+              flexDirection: "column",
+              gap: "0.25rem",
+            }}
+          >
+            {profile.approved_facts.map((f) => (
+              <li key={f.id} className="text-sm">
+                {f.statement}
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       {!compact && (
@@ -92,31 +111,39 @@ export default function BrandProfilePanel({
             >
               Claims rules
             </h3>
-            <ul
-              style={{
-                paddingLeft: "1rem",
-                display: "flex",
-                flexDirection: "column",
-                gap: "0.25rem",
-              }}
-            >
-              {profile.restricted_claims.map((c) => (
-                <li key={c.id} className="text-sm">
-                  {c.rule}
-                </li>
-              ))}
-            </ul>
+            {profile.restricted_claims.length === 0 ? (
+              <p className="text-xs text-muted">No claims rules defined.</p>
+            ) : (
+              <ul
+                style={{
+                  paddingLeft: "1rem",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "0.25rem",
+                }}
+              >
+                {profile.restricted_claims.map((c) => (
+                  <li key={c.id} className="text-sm">
+                    {c.rule}
+                  </li>
+                ))}
+              </ul>
+            )}
           </section>
-          <hr className="divider" style={{ margin: "0.75rem 0" }} />
-          <section>
-            <h3
-              className="text-sm mb-1"
-              style={{ color: "var(--color-text-secondary)" }}
-            >
-              Accessibility
-            </h3>
-            <p className="text-sm">{profile.accessibility.rule}</p>
-          </section>
+          {profile.accessibility?.rule && (
+            <>
+              <hr className="divider" style={{ margin: "0.75rem 0" }} />
+              <section>
+                <h3
+                  className="text-sm mb-1"
+                  style={{ color: "var(--color-text-secondary)" }}
+                >
+                  Accessibility
+                </h3>
+                <p className="text-sm">{profile.accessibility.rule}</p>
+              </section>
+            </>
+          )}
         </>
       )}
     </div>

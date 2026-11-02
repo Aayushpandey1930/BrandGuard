@@ -28,19 +28,20 @@ export interface ActivityEvent {
   detail?: string;
 }
 
+/** Loose profile type used by BrandProfilePanel for display. */
 export interface BrandProfile {
   organisation: string;
-  tagline: string;
-  disclaimer: string;
-  voice: {
-    description: string;
-    guidelines: readonly string[];
+  tagline?: string;
+  disclaimer?: string;
+  voice?: {
+    description?: string;
+    guidelines?: readonly string[];
   };
   preferred_terms: ReadonlyArray<{
     use: string;
     avoid: readonly string[];
-    context: string;
-    rationale: string;
+    context?: string;
+    rationale?: string;
   }>;
   approved_facts: ReadonlyArray<{
     id: string;
@@ -50,7 +51,7 @@ export interface BrandProfile {
     id: string;
     rule: string;
   }>;
-  accessibility: {
-    rule: string;
+  accessibility?: {
+    rule?: string;
   };
 }

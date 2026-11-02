@@ -201,3 +201,33 @@ def submit_review(session_id: str, req: SubmitReviewRequest):
 
     storage.save_session(session)
     return {"ok": True, "final_status": session.final_status, "session": session}
+
+
+# ---------------------------------------------------------------------------
+# Session history (Round 3: persistent SQLite storage)
+# ---------------------------------------------------------------------------
+
+@app.get("/api/sessions")
+def list_sessions(limit: int = 20):
+    sessions = storage.list_recent_sessions(limit=min(limit, 100))
+    return {
+        "sessions": [
+            {
+                "id": s.id,
+                "created_at": s.created_at,
+                "is_sample": s.is_sample,
+                "findings_count": len(s.findings),
+                "final_status": s.final_status,
+                "draft_preview": s.draft[:80] + "…" if len(s.draft) > 80 else s.draft,
+            }
+            for s in sessions
+        ]
+    }
+
+
+@app.delete("/api/session/{session_id}")
+def delete_session(session_id: str):
+    deleted = storage.delete_session(session_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Session not found.")
+    return {"ok": True}

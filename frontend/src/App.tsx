@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { runAllChecks } from "./checker";
+import type { DynamicBrandProfile } from "./checker";
 import { BRAND_PROFILE, SAMPLE_DRAFT, SAMPLE_DRAFT_LABEL } from "./brandRules";
 import type {
   Finding,
@@ -8,11 +9,13 @@ import type {
   ActivityEvent,
 } from "./types";
 import BrandProfilePanel from "./components/BrandProfilePanel";
+import BrandProfileUpload from "./components/BrandProfileUpload";
 import DraftEditor from "./components/DraftEditor";
 import FindingsPanel from "./components/FindingsPanel";
 import ReviewDecisionPanel from "./components/ReviewDecisionPanel";
 import ActivityHistory from "./components/ActivityHistory";
 import StatusBanner from "./components/StatusBanner";
+import TrackedChangesView from "./components/TrackedChangesView";
 
 type AppState = "home" | "editing" | "results" | "decision" | "done";
 
@@ -34,6 +37,10 @@ export default function App() {
   const [activity, setActivity] = useState<ActivityEvent[]>([]);
   const [finalStatus, setFinalStatus] = useState<string | null>(null);
   const [isChecking, setIsChecking] = useState(false);
+
+  // Round 3: custom brand profile
+  const [customProfile, setCustomProfile] = useState<DynamicBrandProfile | null>(null);
+  const activeProfile = (customProfile ?? BRAND_PROFILE) as unknown as DynamicBrandProfile;
 
   const openCount = findings.filter((f) => f.status === "open").length;
   const totalFindings = findings.length;
@@ -62,7 +69,7 @@ export default function App() {
     setIsChecking(true);
     // Small artificial delay so the loading state is visible
     await new Promise((r) => setTimeout(r, 500));
-    const results = runAllChecks(draft);
+    const results = runAllChecks(draft, activeProfile);
     setFindings(results);
     const events: ActivityEvent[] = [
       makeEvent(
@@ -75,7 +82,7 @@ export default function App() {
         results.length === 0
           ? "Review complete — no issues found"
           : `Review complete — ${results.length} item${results.length !== 1 ? "s" : ""} to review`,
-        `Rule-based checks: ${results.length}; AI-assisted: 0 (not configured)`
+        `Rule-based checks: ${results.length}; AI-assisted: 0 (not configured)${customProfile ? "; Custom brand profile active" : ""}`
       ),
     ];
     setActivity(events);
@@ -98,6 +105,8 @@ export default function App() {
         ? `Suggestion accepted: ${finding.title}`
         : status === "edited"
         ? `Suggestion edited and applied: ${finding.title}`
+        : status === "open"
+        ? `Finding reopened: ${finding.title}`
         : `Finding dismissed: ${finding.title}`;
     setActivity((prev) => [
       ...prev,
@@ -158,7 +167,9 @@ export default function App() {
           Brand<span>Guard</span>
         </a>
         <span className="app-header-tagline" aria-hidden="true">
-          Northstar Coffee · Demo
+          {customProfile
+            ? `${customProfile.organisation} · Custom profile`
+            : "Northstar Coffee · Demo"}
         </span>
       </header>
 
@@ -167,6 +178,9 @@ export default function App() {
           <HomePage
             onUseSample={handleUseSample}
             onStartCustom={handleStartCustom}
+            customProfile={customProfile}
+            onProfileLoaded={setCustomProfile}
+            onResetProfile={() => setCustomProfile(null)}
           />
         )}
 
@@ -178,11 +192,16 @@ export default function App() {
             onCheck={handleCheck}
             onBack={handleStartOver}
             isChecking={isChecking}
+            activeProfile={activeProfile}
+            customProfile={customProfile}
+            onProfileLoaded={setCustomProfile}
+            onResetProfile={() => setCustomProfile(null)}
           />
         )}
 
         {appState === "results" && (
           <ResultsView
+            draft={draft}
             findings={findings}
             summary={summary}
             openCount={openCount}
@@ -191,6 +210,7 @@ export default function App() {
             onUpdateFinding={handleUpdateFinding}
             onProceedToDecision={() => setAppState("decision")}
             onStartOver={handleStartOver}
+            activeProfile={activeProfile}
           />
         )}
 
@@ -222,9 +242,15 @@ export default function App() {
 function HomePage({
   onUseSample,
   onStartCustom,
+  customProfile,
+  onProfileLoaded,
+  onResetProfile,
 }: {
   onUseSample: () => void;
   onStartCustom: () => void;
+  customProfile: DynamicBrandProfile | null;
+  onProfileLoaded: (p: DynamicBrandProfile) => void;
+  onResetProfile: () => void;
 }) {
   return (
     <div>
@@ -234,15 +260,15 @@ function HomePage({
           className="text-secondary"
           style={{ maxWidth: 560, marginBottom: "1.25rem" }}
         >
-          BrandGuard compares your draft against Northstar Coffee's brand rules,
-          preferred wording and approved facts. It flags possible issues and
-          suggests corrections — you make the final call.
+          BrandGuard compares your draft against brand rules, preferred wording
+          and approved facts. It flags possible issues and suggests corrections —
+          you make the final call.
         </p>
         <div className="flex gap-3" style={{ flexWrap: "wrap" }}>
-          <button className="btn btn-primary" onClick={onUseSample}>
+          <button className="btn btn-primary" onClick={onUseSample} id="btn-try-sample">
             Try sample review
           </button>
-          <button className="btn btn-secondary" onClick={onStartCustom}>
+          <button className="btn btn-secondary" onClick={onStartCustom} id="btn-paste-draft">
             Paste my own draft
           </button>
         </div>
@@ -251,8 +277,18 @@ function HomePage({
         </p>
       </div>
 
+      {/* Round 3: Custom brand profile upload on home page */}
+      <div style={{ marginBottom: "1.5rem" }}>
+        <BrandProfileUpload
+          onProfileLoaded={onProfileLoaded}
+          onReset={onResetProfile}
+          isCustom={!!customProfile}
+          customProfileName={customProfile?.organisation}
+        />
+      </div>
+
       <div className="two-col">
-        <BrandProfilePanel profile={BRAND_PROFILE} />
+        <BrandProfilePanel profile={(customProfile ?? BRAND_PROFILE) as never} />
         <div className="card">
           <h2 className="mb-3">How it works</h2>
           <ol
@@ -265,15 +301,21 @@ function HomePage({
           >
             <li className="text-sm text-secondary">Paste a draft or use the sample.</li>
             <li className="text-sm text-secondary">
-              BrandGuard checks it against brand rules and approved facts — no
-              internet connection or account required.
+              Optionally upload your own brand rules JSON — the checker will use
+              your rules instead of the built-in profile.
             </li>
             <li className="text-sm text-secondary">
-              Each finding shows what was flagged, why, and which rule it relates
-              to.
+              BrandGuard checks the draft against brand rules and approved facts —
+              no internet connection or account required.
+            </li>
+            <li className="text-sm text-secondary">
+              Each finding shows what was flagged, why, and which rule it relates to.
             </li>
             <li className="text-sm text-secondary">
               Accept a suggestion, edit it first, or dismiss it — your choice.
+            </li>
+            <li className="text-sm text-secondary">
+              The tracked-changes view shows exactly what was accepted, edited, or dismissed.
             </li>
             <li className="text-sm text-secondary">
               Add a comment, then choose Approve or Request changes.
@@ -282,8 +324,6 @@ function HomePage({
           <hr className="divider" />
           <p className="text-xs text-muted">
             All checks run in your browser. No data is sent anywhere.
-            Optional AI tone analysis can be added via a backend with an{" "}
-            <code>OPENAI_API_KEY</code>.
           </p>
         </div>
       </div>
@@ -298,6 +338,10 @@ function EditingView({
   onCheck,
   onBack,
   isChecking,
+  activeProfile,
+  customProfile,
+  onProfileLoaded,
+  onResetProfile,
 }: {
   draft: string;
   isSample: boolean;
@@ -305,6 +349,10 @@ function EditingView({
   onCheck: () => void;
   onBack: () => void;
   isChecking: boolean;
+  activeProfile: DynamicBrandProfile;
+  customProfile: DynamicBrandProfile | null;
+  onProfileLoaded: (p: DynamicBrandProfile) => void;
+  onResetProfile: () => void;
 }) {
   return (
     <div>
@@ -317,6 +365,17 @@ function EditingView({
           ← Back
         </button>
       </div>
+
+      {/* Custom profile upload in editing view */}
+      <div style={{ marginBottom: "1.25rem" }}>
+        <BrandProfileUpload
+          onProfileLoaded={onProfileLoaded}
+          onReset={onResetProfile}
+          isCustom={!!customProfile}
+          customProfileName={customProfile?.organisation}
+        />
+      </div>
+
       <div className="two-col">
         <DraftEditor
           draft={draft}
@@ -326,13 +385,14 @@ function EditingView({
           onCheck={onCheck}
           isChecking={isChecking}
         />
-        <BrandProfilePanel profile={BRAND_PROFILE} compact />
+        <BrandProfilePanel profile={activeProfile as never} compact />
       </div>
     </div>
   );
 }
 
 function ResultsView({
+  draft,
   findings,
   summary,
   openCount,
@@ -341,7 +401,9 @@ function ResultsView({
   onUpdateFinding,
   onProceedToDecision,
   onStartOver,
+  activeProfile,
 }: {
+  draft: string;
   findings: Finding[];
   summary: string;
   openCount: number;
@@ -350,6 +412,7 @@ function ResultsView({
   onUpdateFinding: (id: string, status: FindingStatus, text?: string) => void;
   onProceedToDecision: () => void;
   onStartOver: () => void;
+  activeProfile: DynamicBrandProfile;
 }) {
   return (
     <div>
@@ -378,13 +441,18 @@ function ResultsView({
         </div>
       )}
 
+      {/* Round 3: Tracked changes view — always visible in results */}
+      <div style={{ marginBottom: "1.5rem" }}>
+        <TrackedChangesView draft={draft} findings={findings} />
+      </div>
+
       <div className="two-col">
         <FindingsPanel
           findings={findings}
           onUpdateFinding={onUpdateFinding}
         />
         <div className="flex flex-col gap-4">
-          <BrandProfilePanel profile={BRAND_PROFILE} compact />
+          <BrandProfilePanel profile={activeProfile as never} compact />
           <ActivityHistory events={activity} />
           <div className="card">
             <h3 className="mb-3">Ready to decide?</h3>
@@ -396,6 +464,7 @@ function ResultsView({
             <button
               className="btn btn-primary w-full"
               onClick={onProceedToDecision}
+              id="btn-proceed-decision"
             >
               Add comment and decide →
             </button>

@@ -19,9 +19,9 @@ def _find_excerpt(text: str, phrase: str, window: int = 80) -> str:
     end = min(len(text), idx + len(phrase) + 60)
     excerpt = text[start:end].strip()
     if start > 0:
-        excerpt = "…" + excerpt
+        excerpt = "\u2026" + excerpt
     if end < len(text):
-        excerpt = excerpt + "…"
+        excerpt = excerpt + "\u2026"
     return excerpt
 
 
@@ -33,20 +33,23 @@ def check_preferred_terms(draft: str) -> list[Finding]:
             pattern = r"\b" + re.escape(avoid_word) + r"\b"
             if re.search(pattern, draft, re.IGNORECASE):
                 excerpt = _find_excerpt(draft, avoid_word)
+                use = term_rule["use"]
+                context = term_rule["context"]
+                rationale = term_rule["rationale"]
                 findings.append(Finding(
-                    title=f"Preferred term: use "{term_rule['use']}"",
+                    title=f'Preferred term: use "{use}"',
                     category="Terminology",
                     triggered_text=excerpt,
                     explanation=(
-                        f"The word "{avoid_word}" appears in this draft. "
-                        f"Northstar Coffee uses "{term_rule['use']}" in all "
-                        f"{term_rule['context']} to keep language consistent."
+                        f'The word "{avoid_word}" appears in this draft. '
+                        f'Northstar Coffee uses "{use}" in all '
+                        f"{context} to keep language consistent."
                     ),
-                    related_rule=f"Use "{term_rule['use']}" — avoid "{avoid_word}" in {term_rule['context']}. {term_rule['rationale']}",
+                    related_rule=f'Use "{use}" \u2014 avoid "{avoid_word}" in {context}. {rationale}',
                     severity=Severity.review,
                     source=FindingSource.rule,
-                    suggestion=draft.replace(avoid_word, term_rule["use"]).replace(
-                        avoid_word.capitalize(), term_rule["use"].capitalize()
+                    suggestion=draft.replace(avoid_word, use).replace(
+                        avoid_word.capitalize(), use.capitalize()
                     ),
                 ))
     return findings
@@ -70,8 +73,8 @@ def check_approved_facts(draft: str) -> list[Finding]:
                 category="Fact accuracy",
                 triggered_text=_find_excerpt(draft, match.group(0)),
                 explanation=(
-                    f"The draft says "{match.group(0)}" but the approved fact is "
-                    f""{loc_fact['statement']}". Using the wrong number risks "
+                    f'The draft says "{match.group(0)}" but the approved fact is '
+                    f'"{loc_fact["statement"]}". Using the wrong number risks '
                     f"misleading customers and undermining trust."
                 ),
                 related_rule=loc_fact["statement"],
@@ -95,14 +98,14 @@ def check_approved_facts(draft: str) -> list[Finding]:
                     triggered_text=excerpt,
                     explanation=(
                         f"The draft mentions the seasonal blend but does not include "
-                        f"the required phrase "{required}". Without this qualifier, "
+                        f'the required phrase "{required}". Without this qualifier, '
                         f"customers may expect availability that cannot be guaranteed."
                     ),
                     related_rule=seasonal_fact["statement"],
                     severity=Severity.review,
                     source=FindingSource.rule,
-                    suggestion=f"Add "{required}" after the mention of the seasonal blend.",
-                    confidence_note="Needs human review — context may already imply limited availability.",
+                    suggestion=f'Add "{required}" after the mention of the seasonal blend.',
+                    confidence_note="Needs human review \u2014 context may already imply limited availability.",
                 ))
             break
 
@@ -121,7 +124,7 @@ def check_restricted_claims(draft: str) -> list[Finding]:
                     category="Claims & compliance",
                     triggered_text=excerpt,
                     explanation=(
-                        f"The phrase "{pattern}" is a promotional claim that requires "
+                        f'The phrase "{pattern}" is a promotional claim that requires '
                         f"documented evidence before it can be published. Using it "
                         f"without approval creates compliance risk."
                     ),
